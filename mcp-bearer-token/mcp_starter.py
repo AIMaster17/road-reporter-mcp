@@ -1,92 +1,82 @@
 import os
 import uvicorn
 from pymongo import MongoClient
-from mcp_alpha_sdk import MCP, Tool, Field # <--- THIS IS THE ONLY LINE THAT CHANGED
-from annotated_types import Annotated
+from fastapi import FastAPI, Request, HTTPException
+from pydantic import BaseModel, Field
+from typing import List, Any
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
+MONGO_URI = os.getenv("MONGO_URI")
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+MY_NUMBER = os.getenv("MY_NUMBER")
 
 # --- Database Connection ---
-MONGO_URI = os.getenv("MONGO_URI")
-if not MONGO_URI:
-    raise ValueError("MONGO_URI not found in .env file")
-
 client = MongoClient(MONGO_URI)
 db = client.get_database("test")
 reports_collection = db.get_collection("reports")
 print("Successfully connected to MongoDB Atlas!")
 
+# Create the FastAPI app
+app = FastAPI()
 
-# --- MCP Server Setup ---
-mcp = MCP(
-    auth_token=os.getenv("AUTH_TOKEN"),
-)
+# --- Tool Logic (our original functions) ---
+def add_road_report_logic(latitude, longitude, road_condition_type, severity, comments):
+    report_document = {
+        "latitude": latitude, "longitude": longitude,
+        "road_condition_type": road_condition_type, "severity": severity,
+        "comments": comments,
+    }
+    reports_collection.insert_one(report_document)
+    return "✅ Successfully saved the new road report."
 
-# --- Tool Definitions ---
-@mcp.tool(
-    description="Validates the user by returning the registered phone number. This is a verification tool."
-)
-async def validate_user() -> str:
-    """Returns the phone number stored in the MY_NUMBER environment variable."""
-    my_number = os.getenv("MY_NUMBER")
-    if my_number:
-        return f"Validation successful. Registered number is {my_number}."
-    else:
-        return "MY_NUMBER is not configured on this server."
+def get_all_reports_logic():
+    recent_reports = reports_collection.find().sort("_id", -1).limit(5)
+    report_list = list(recent_reports)
+    if not report_list: return "No road reports found."
+    response = f"Here are the {len(report_list)} most recent reports:\n\n"
+    for i, report in enumerate(report_list):
+        response += f"{i + 1}. {report.get('road_condition_type', 'N/A')} ({report.get('severity', 'N/A')}) - Comments: {report.get('comments', 'None')}\n"
+    return response
 
-@mcp.tool(
-    description="Adds a new road condition report to the database. Requires latitude, longitude, condition type, severity, and comments."
-)
-async def add_road_report(
-    latitude: Annotated[float, Field(description="The latitude of the report location.")],
-    longitude: Annotated[float, Field(description="The longitude of the report location.")],
-    road_condition_type: Annotated[str, Field(description="The type of road condition (e.g., Pothole, Crack).")],
-    severity: Annotated[str, Field(description="The severity of the condition (e.g., Minor, Moderate, Severe).")],
-    comments: Annotated[str, Field(description="Additional comments about the issue.")]
-) -> str:
-    """Adds a new road report to the database."""
+def validate_user_logic():
+    return f"Validation successful. Registered number is {MY_NUMBER}." if MY_NUMBER else "MY_NUMBER is not configured."
+
+# --- MCP Server Endpoint ---
+class McpRequest(BaseModel):
+    method: str
+    params: List[Any]
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request, body: McpRequest):
+    # 1. Check Authentication
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or auth_header != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # 2. Route to the correct tool based on the method name
+    method = body.method
+    params = body.params
+    result = ""
+
     try:
-        report_document = {
-            "latitude": latitude,
-            "longitude": longitude,
-            "road_condition_type": road_condition_type,
-            "severity": severity,
-            "comments": comments,
-        }
-        reports_collection.insert_one(report_document)
-        return "✅ Successfully saved the new road report."
-    except Exception as e:
-        print(f"Error saving report: {e}")
-        return "❌ Sorry, there was an error saving the report."
-
-@mcp.tool(
-    description="Retrieves a summary of the most recent road condition reports from the database."
-)
-async def get_all_reports() -> str:
-    """Gets a summary of all road reports."""
-    try:
-        recent_reports = reports_collection.find().sort("_id", -1).limit(5)
-        report_list = list(recent_reports)
-
-        if not report_list:
-            return "No road reports have been filed yet."
-
-        response = f"Here are the {len(report_list)} most recent reports:\n\n"
-        for i, report in enumerate(report_list):
-            response += f"{i + 1}. {report.get('road_condition_type', 'N/A')} ({report.get('severity', 'N/A')}) - Comments: {report.get('comments', 'None')}\n"
+        if method == "add_road_report":
+            result = add_road_report_logic(*params)
+        elif method == "get_all_reports":
+            result = get_all_reports_logic()
+        elif method == "validate_user":
+            result = validate_user_logic()
+        else:
+            raise HTTPException(status_code=404, detail="Method not found")
         
-        return response
+        # 3. Return the successful result
+        return {"result": result}
+        
     except Exception as e:
-        print(f"Error fetching reports: {e}")
-        return "❌ Sorry, there was an error fetching the reports."
+        # 4. Return an error if something goes wrong
+        return {"error": str(e)}
 
-
-# --- Main entry point to run the server ---
+# --- Main entry point for Uvicorn ---
 if __name__ == "__main__":
-    uvicorn.run(
-        "mcp_starter:mcp.app",
-        host="0.0.0.0",
-        port=8086,
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8086)
