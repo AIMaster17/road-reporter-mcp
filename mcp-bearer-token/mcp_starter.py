@@ -1,7 +1,7 @@
 import os
 import uvicorn
 from pymongo import MongoClient
-from mcp import MCP, Tool, Field
+from mcp_alpha_sdk import MCP, Tool, Field # <--- THIS IS THE ONLY LINE THAT CHANGED
 from annotated_types import Annotated
 from dotenv import load_dotenv
 
@@ -25,8 +25,6 @@ mcp = MCP(
 )
 
 # --- Tool Definitions ---
-
-# **** THIS IS THE NEW TOOL ****
 @mcp.tool(
     description="Validates the user by returning the registered phone number. This is a verification tool."
 )
