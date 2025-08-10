@@ -14,18 +14,29 @@ if not MONGO_URI:
     raise ValueError("MONGO_URI not found in .env file")
 
 client = MongoClient(MONGO_URI)
-db = client.get_database("test") # Assuming your database is named 'test'
-reports_collection = db.get_collection("reports") # Assuming your collection is named 'reports'
+db = client.get_database("test")
+reports_collection = db.get_collection("reports")
 print("Successfully connected to MongoDB Atlas!")
 
 
 # --- MCP Server Setup ---
 mcp = MCP(
-    # This token must match the AUTH_TOKEN in your .env file
     auth_token=os.getenv("AUTH_TOKEN"),
 )
 
 # --- Tool Definitions ---
+
+# **** THIS IS THE NEW TOOL ****
+@mcp.tool(
+    description="Validates the user by returning the registered phone number. This is a verification tool."
+)
+async def validate_user() -> str:
+    """Returns the phone number stored in the MY_NUMBER environment variable."""
+    my_number = os.getenv("MY_NUMBER")
+    if my_number:
+        return f"Validation successful. Registered number is {my_number}."
+    else:
+        return "MY_NUMBER is not configured on this server."
 
 @mcp.tool(
     description="Adds a new road condition report to the database. Requires latitude, longitude, condition type, severity, and comments."
@@ -58,7 +69,6 @@ async def add_road_report(
 async def get_all_reports() -> str:
     """Gets a summary of all road reports."""
     try:
-        # Find the 5 most recent reports
         recent_reports = reports_collection.find().sort("_id", -1).limit(5)
         report_list = list(recent_reports)
 
