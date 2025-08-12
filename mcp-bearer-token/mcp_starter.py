@@ -4,13 +4,11 @@ import os
 from dotenv import load_dotenv
 from textwrap import dedent
 
-# --- Core MCP and Server imports from the official starter ---
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
 from mcp.server.auth.provider import AccessToken
 from pydantic import Field
 
-# --- Our Database import ---
 from pymongo import MongoClient
 
 # --- Load environment variables ---
@@ -49,7 +47,9 @@ mcp = FastMCP(
     auth=SimpleBearerAuthProvider(TOKEN),
 )
 
-# --- Tool: about (recommended by Puch) ---
+# --- Tool Definitions ---
+
+# Recommended "about" tool
 @mcp.tool
 async def about() -> dict[str, str]:
     server_name = "Road Condition Reporter MCP"
@@ -61,12 +61,18 @@ async def about() -> dict[str, str]:
     )
     return {"name": server_name, "description": server_description}
 
-# --- Tool: validate (required by Puch) ---
+# **** THIS IS THE NEW TOOL WE ARE ADDING ****
+@mcp.tool(description="Provides the public link to the interactive web app map.")
+async def open_map_view() -> str:
+    """Returns the link to the live web application map."""
+    return "Here is the link to the live map of all road issues: https://road-reporter-webapp-production.up.railway.app/"
+
+# Required "validate" tool
 @mcp.tool
 async def validate() -> str:
     return MY_NUMBER
 
-# --- Tool: add_road_report ---
+# Our custom "add_road_report" tool
 @mcp.tool(description="Adds a new road condition report to the database.")
 async def add_road_report(
     latitude: Annotated[float, Field(description="The latitude of the report location.")],
@@ -86,7 +92,7 @@ async def add_road_report(
     except Exception as e:
         return f"❌ Error saving report: {e}"
 
-# --- Tool: get_all_reports ---
+# Our custom "get_all_reports" tool
 @mcp.tool(description="Retrieves a summary of the most recent road condition reports.")
 async def get_all_reports() -> str:
     try:
