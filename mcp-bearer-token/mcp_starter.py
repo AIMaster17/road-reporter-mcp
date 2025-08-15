@@ -96,7 +96,7 @@ async def add_road_report(
 @mcp.tool(description="Retrieves a summary of the most recent road condition reports.")
 async def get_all_reports() -> str:
     try:
-        recent_reports = reports_collection.find().sort("_id", -1).limit(5)
+        recent_reports = reports_collection.find().sort("_id", -1)
         report_list = list(recent_reports)
         if not report_list: return "No road reports have been filed yet."
         
